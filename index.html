@@ -1,0 +1,728 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#E9E6F0">
+<title>Day</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --paper:#E9E6F0; --card:#F4F2F8; --ink:#221B33; --mute:#6E6584;
+    --line:#D3CDE0; --track:#DFDAE9; --live:#1F7A6B; --mark:#A32B6B;
+    --display:"Bricolage Grotesque","Avenir Next Condensed",system-ui,sans-serif;
+    --mono:"DM Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --body:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);color:var(--ink);font-family:var(--body);
+    padding:max(14px,env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom));
+    max-width:560px;margin:0 auto;-webkit-user-select:none;user-select:none;
+    overscroll-behavior-y:contain;
+  }
+  button{font:inherit;color:inherit;background:none;border:0;padding:0;touch-action:manipulation}
+
+  .top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 2px 14px}
+  .dayname{font-family:var(--display);font-weight:700;font-size:29px;letter-spacing:-.02em;line-height:1}
+  .date{font-family:var(--mono);font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.09em;margin-top:5px}
+  .plus{width:40px;height:40px;flex:0 0 40px;border-radius:50%;border:1.5px solid var(--ink);
+        font-size:24px;line-height:0;padding-bottom:3px}
+  .plus:active{transform:scale(.93)}
+
+  /* calendar strip — the week, walkable backwards */
+  .cal{display:flex;align-items:stretch;gap:6px;margin-bottom:22px}
+  .calnav{width:26px;flex:0 0 26px;color:var(--mute);font-size:17px;border-radius:8px}
+  .calnav[disabled]{opacity:.25}
+  .days{flex:1;display:flex;gap:4px}
+  .day{flex:1;border-radius:9px;padding:7px 0 6px;display:flex;flex-direction:column;
+       align-items:center;gap:3px;border:1px solid transparent}
+  .day .dl{font-family:var(--mono);font-size:9px;color:var(--mute);letter-spacing:.04em}
+  .day .dn{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:14px}
+  .day .dd{width:4px;height:4px;border-radius:50%;background:transparent}
+  .day.done .dd{background:var(--live)}
+  .day.now{border-color:var(--line)}
+  .day.sel{background:var(--ink)}
+  .day.sel .dl,.day.sel .dn{color:var(--paper)}
+  .day.sel.done .dd{background:var(--paper)}
+  .day.future{opacity:.3;pointer-events:none}
+
+  .band{font-family:var(--mono);font-size:11px;color:var(--mute);letter-spacing:.14em;text-transform:uppercase;
+        display:flex;align-items:center;gap:10px;margin:26px 2px 10px}
+  .band::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+  .card.on{border-color:var(--live);box-shadow:inset 0 0 0 1px var(--live)}
+
+  .row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .name{font-family:var(--display);font-weight:500;font-size:18px;letter-spacing:-.01em;line-height:1.15}
+  .sub{font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:4px}
+  .edit{font-family:var(--mono);font-size:11px;color:var(--mute);padding:4px 8px;margin:-4px -8px 0 0;letter-spacing:.08em}
+
+  .clock{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:34px;letter-spacing:-.03em;
+         line-height:1;margin:14px 0 12px;display:flex;align-items:baseline;gap:9px}
+  .clock small{font-family:var(--mono);font-size:11px;color:var(--mute);letter-spacing:.06em}
+  .clock.hit{color:var(--live)}
+
+  .bar{height:12px;background:var(--track);border-radius:3px;display:flex;gap:1.5px;overflow:hidden}
+  .seg{background:var(--ink);min-width:2px;height:100%}
+  .seg.now{background:var(--live)}
+  .bar.full .seg{background:var(--live)}
+
+  .go{width:100%;text-align:center;padding:12px;border-radius:10px;background:var(--ink);color:var(--paper);
+      font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;margin-top:12px}
+  .go.stop{background:var(--live)}
+  .go:active{transform:scale(.985)}
+  .nudge{display:flex;gap:8px;margin-top:12px}
+  .nudge button{flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;
+                font-family:var(--mono);font-size:12px;color:var(--mute);letter-spacing:.06em}
+
+  /* reps with more than one: circles */
+  .pips{display:flex;margin:12px -5px 0;flex-wrap:wrap}
+  .pip{padding:5px;display:block}
+  .pip i{display:block;width:30px;height:30px;border-radius:50%;border:1.5px solid var(--line);
+         background:transparent;transition:background .12s ease,border-color .12s ease,transform .12s ease}
+  .pip.hit i{background:var(--mark);border-color:var(--mark)}
+  .pip:active i{transform:scale(.88)}
+  .count{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:22px}
+  .count.full{color:var(--mark)}
+
+  /* once-a-day items: small squares on the same grid rhythm as the calendar */
+  .tiles{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .chip{aspect-ratio:1/1;border:1px solid var(--line);border-radius:9px;background:var(--card);
+        display:flex;align-items:center;justify-content:center;padding:3px;
+        -webkit-touch-callout:none;transition:background .12s ease,border-color .12s ease}
+  .chip span{font-family:var(--mono);font-size:8.5px;letter-spacing:.02em;text-transform:uppercase;
+             line-height:1.15;text-align:center;color:var(--mute);
+             display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+  .chip.hit{background:var(--mark);border-color:var(--mark)}
+  .chip.hit span{color:var(--paper)}
+  .chip:active{transform:scale(.93)}
+
+  .peek{position:fixed;display:none;z-index:20;background:var(--ink);color:var(--paper);
+        border-radius:10px;padding:9px 10px 9px 13px;align-items:center;gap:12px;
+        box-shadow:0 6px 20px rgba(0,0,0,.22)}
+  .peek.open{display:flex}
+  .peek .pn{font-family:var(--display);font-weight:500;font-size:15px;white-space:nowrap}
+  .peek .pe{font-family:var(--mono);font-size:10px;letter-spacing:.1em;opacity:.7;padding:4px 6px}
+
+  .empty{font-size:14px;color:var(--mute);line-height:1.5;padding:2px 2px 12px}
+  .foot{font-family:var(--mono);font-size:10px;color:var(--mute);text-align:center;margin-top:30px;line-height:1.7;letter-spacing:.04em}
+
+  .reset{font-family:var(--mono);font-size:10px;color:var(--mute);letter-spacing:.1em;
+         text-transform:uppercase;padding:12px 14px;margin-top:6px;border-bottom:1px solid var(--line)}
+  .reset.armed{color:var(--mark);border-color:var(--mark)}
+  .swatches{display:flex;gap:9px}
+  .sw{flex:1;border-radius:11px;border:1px solid var(--line);padding:10px 8px 9px;text-align:left;
+      display:flex;flex-direction:column;gap:8px;transition:box-shadow .15s ease}
+  .sw[aria-pressed="true"]{box-shadow:inset 0 0 0 2px var(--ink)}
+  .sw .pal{display:flex;gap:4px}
+  .sw .pal b{width:9px;height:9px;border-radius:50%;display:block}
+  .sw .lbl{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase}
+  body,.card,.tile,.bar,.sw{transition:background-color .2s ease,border-color .2s ease,color .2s ease}
+
+  .veil{position:fixed;inset:0;background:rgba(34,27,51,.4);display:none;align-items:flex-end;z-index:9}
+  .veil.open{display:flex}
+  .sheet{background:var(--paper);width:100%;border-radius:18px 18px 0 0;
+         padding:20px 18px calc(24px + env(safe-area-inset-bottom));
+         max-width:560px;margin:0 auto;-webkit-user-select:auto;user-select:auto}
+  .sheet h2{font-family:var(--display);font-weight:700;font-size:20px;margin:0 0 16px;letter-spacing:-.01em}
+  label{display:block;font-family:var(--mono);font-size:10px;color:var(--mute);letter-spacing:.12em;
+        text-transform:uppercase;margin:0 0 6px}
+  input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);
+        font-family:var(--body);font-size:16px;color:var(--ink);margin-bottom:14px}
+  input:focus{outline:2px solid var(--ink);outline-offset:-1px}
+  .pair{display:flex;gap:10px}
+  .pair>div{flex:1}
+  .hint{font-family:var(--mono);font-size:10px;color:var(--mute);margin:-8px 0 16px;letter-spacing:.03em;line-height:1.6}
+  .pick{display:flex;flex-direction:column;gap:9px;margin-bottom:6px}
+  .pick button{text-align:left;padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+  .pick .pt{font-family:var(--display);font-weight:500;font-size:17px}
+  .pick .ps{font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:4px}
+  .save{width:100%;padding:14px;border-radius:11px;background:var(--ink);color:var(--paper);
+        font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+  .kill{width:100%;padding:12px;margin-top:8px;color:var(--mark);font-family:var(--mono);font-size:12px;letter-spacing:.08em}
+  .cancel{width:100%;padding:10px;color:var(--mute);font-family:var(--mono);font-size:12px;letter-spacing:.08em}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="top">
+  <div>
+    <div class="dayname" id="dayName">Today</div>
+    <div class="date" id="dateStamp"></div>
+  </div>
+  <button class="plus" id="add" aria-label="Add a goal">+</button>
+</div>
+
+<div class="cal">
+  <button class="calnav" data-shift="-7" aria-label="Earlier week">&lsaquo;</button>
+  <div class="days" id="calDays"></div>
+  <button class="calnav" data-shift="7" id="navNext" aria-label="Later week">&rsaquo;</button>
+</div>
+
+<div class="band">Time</div>
+<div id="timers"></div>
+
+<div class="band">Reps</div>
+<div id="reps"></div>
+<div class="tiles" id="tiles"></div>
+
+<div class="band">Look</div>
+<div class="swatches" id="swatches"></div>
+
+<div class="foot">
+  Tap a day above to fill in what you missed.<br>
+  Share &rarr; Add to Home Screen to keep it one tap away.
+  <div><button class="reset" id="reset">Reset to defaults</button></div>
+</div>
+
+<div class="peek" id="peek"></div>
+
+<div class="veil" id="veil">
+  <div class="sheet">
+    <h2 id="sheetTitle">Edit</h2>
+
+    <div class="pick" id="pickType">
+      <button data-new="timer">
+        <div class="pt">Time</div>
+        <div class="ps">Start and stop it through the day</div>
+      </button>
+      <button data-new="rep">
+        <div class="pt">Reps</div>
+        <div class="ps">Do it a set number of times a day</div>
+      </button>
+    </div>
+
+    <div id="formWrap">
+      <div><label for="fName">Name</label><input id="fName" type="text" autocomplete="off" enterkeyhint="done"></div>
+      <div id="timeFields" class="pair">
+        <div><label for="fH">Hours</label><input id="fH" type="number" min="0" max="23" inputmode="numeric"></div>
+        <div><label for="fM">Minutes</label><input id="fM" type="number" min="0" max="59" inputmode="numeric"></div>
+      </div>
+      <div id="repFields">
+        <label for="fT">How many times a day</label>
+        <input id="fT" type="number" min="1" max="24" inputmode="numeric">
+        <div class="hint">Set this to 1 and it becomes a square checkbox, packed alongside your other once-a-day items.</div>
+      </div>
+      <button class="save" id="save">Save</button>
+      <button class="kill" id="kill">Delete this goal</button>
+    </div>
+
+    <button class="cancel" id="cancel">Cancel</button>
+  </div>
+</div>
+
+<script>
+const KEY = 'daytracker.v1';
+let mem = null;
+
+const THEMES = {
+  lilac: { label:'Lilac', paper:'#E9E6F0', card:'#F4F2F8', ink:'#221B33', mute:'#6E6584',
+           line:'#D3CDE0', track:'#DFDAE9', live:'#1F7A6B', mark:'#A32B6B' },
+  moss:  { label:'Moss',  paper:'#E6EAE1', card:'#F1F4ED', ink:'#22291F', mute:'#66705E',
+           line:'#CDD4C6', track:'#D8DED2', live:'#2E6B4F', mark:'#A8541E' },
+  slate: { label:'Slate', paper:'#E3E8EE', card:'#F0F3F7', ink:'#17222E', mute:'#5F707F',
+           line:'#C8D1DB', track:'#D5DCE4', live:'#146B5E', mark:'#B23A5B' },
+  ink:   { label:'Ink',   paper:'#17131F', card:'#211B2B', ink:'#EDE9F2', mute:'#8F86A6',
+           line:'#332B42', track:'#2C2439', live:'#4FBFA8', mark:'#E3689F' }
+};
+
+const hasLocal = (() => {
+  try { localStorage.setItem('_t','1'); localStorage.removeItem('_t'); return true; } catch(e){ return false; }
+})();
+
+const store = {
+  async get(){
+    if (window.storage){
+      try { const r = await window.storage.get(KEY); return r ? JSON.parse(r.value) : null; } catch(e){ return null; }
+    }
+    if (hasLocal){ try { const v = localStorage.getItem(KEY); return v ? JSON.parse(v) : null; } catch(e){ return null; } }
+    return mem;
+  },
+  async set(v){
+    mem = v;
+    const json = JSON.stringify(v);
+    if (window.storage){ try { await window.storage.set(KEY, json); } catch(e){} return; }
+    if (hasLocal){ try { localStorage.setItem(KEY, json); } catch(e){} }
+  }
+};
+
+const uid = () => Math.random().toString(36).slice(2,9);
+const pad = n => String(n).padStart(2,'0');
+const dayKey = (d=new Date()) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fromKey = k => { const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d); };
+const shiftDays = (d,n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+
+let S = null;
+let view = dayKey();      // the day on screen
+let stripEnd = dayKey();  // rightmost day of the calendar strip
+let sheet = null;         // { kind, id } | { kind:'pick' }
+
+function seed(){
+  return {
+    v: 3,
+    theme: 'lilac',
+    timers: [{ id: uid(), name: 'Standing desk', goalMin: 120 }],
+    reps: [
+      { id: uid(), name: 'Heel raises',     target: 3 },
+      { id: uid(), name: 'Side plank clam', target: 3 },
+      { id: uid(), name: 'Wall-sit',        target: 3 },
+      { id: uid(), name: 'Creatine',        target: 1 },
+      { id: uid(), name: 'Magnesium',       target: 1 },
+      { id: uid(), name: 'Arctic cod oil',  target: 1 }
+    ],
+    active: null,
+    days: {}
+  };
+}
+
+/* Runs once on data saved before the real goal list existed: clears out the
+   sample goals and adds anything missing, leaving your own edits alone. */
+const SAMPLES = ['deep work','stretch','glass of water'];
+const ONCE_DAILY = ['creatine','magnesium','arctic cod oil'];
+
+function migrate(){
+  if (S.v < 2){
+    const sample = n => SAMPLES.includes(n.trim().toLowerCase());
+    S.timers = S.timers.filter(t => !sample(t.name));
+    S.reps   = S.reps.filter(r => !sample(r.name));
+
+    const fresh = seed();
+    const have = list => new Set(list.map(x => x.name.trim().toLowerCase()));
+    const ht = have(S.timers), hr = have(S.reps);
+    fresh.timers.forEach(t => { if (!ht.has(t.name.toLowerCase())) S.timers.push(t); });
+    fresh.reps.forEach(r => { if (!hr.has(r.name.toLowerCase())) S.reps.push(r); });
+  }
+  if (S.v < 3){
+    // these three were asked for as once a day, so they belong in squares
+    S.reps.forEach(r => {
+      if (ONCE_DAILY.includes(r.name.trim().toLowerCase())) r.target = 1;
+    });
+  }
+  // a target that got stored as text would sort into the wrong shape
+  S.reps.forEach(r => { r.target = Math.min(24, Math.max(1, parseInt(r.target,10) || 1)); });
+  S.v = 3;
+}
+
+function day(k = view){
+  if (!S.days[k]) S.days[k] = { sessions:{}, reps:{} };
+  const d = S.days[k];
+  if (!d.sessions) d.sessions = {};
+  if (!d.reps) d.reps = {};
+  return d;
+}
+
+/* A timer left running past midnight gets closed out at the end of the day it
+   started, so the hours land on the day they were actually worked. */
+function normalize(){
+  if (!S.active) return;
+  const started = new Date(S.active.startedAt);
+  const k = dayKey(started);
+  if (k === dayKey()) return;
+  const midnight = new Date(started); midnight.setHours(24,0,0,0);
+  (day(k).sessions[S.active.timerId] ||= []).push({ s: S.active.startedAt, e: midnight.getTime() });
+  S.active = null;
+}
+
+const sessions = (id, k = view) => day(k).sessions[id] || [];
+
+function elapsed(id, k = view){
+  let ms = sessions(id,k).reduce((a,x) => a + (x.e - x.s), 0);
+  if (S.active && S.active.timerId === id && k === dayKey()) ms += Date.now() - S.active.startedAt;
+  return ms;
+}
+
+function hms(ms){
+  const t = Math.max(0, Math.floor(ms/1000));
+  return `${Math.floor(t/3600)}:${pad(Math.floor(t/60)%60)}:${pad(t%60)}`;
+}
+function goalLabel(min){
+  const h = Math.floor(min/60), m = min%60;
+  return h && m ? `of ${h}h ${m}m` : h ? `of ${h}h` : `of ${m}m`;
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function allDone(k){
+  if (!S.timers.length && !S.reps.length) return false;
+  return S.timers.every(t => elapsed(t.id,k) >= t.goalMin*60000)
+      && S.reps.every(r => (day(k).reps[r.id]||0) >= r.target);
+}
+
+/* ---------- render ---------- */
+
+function renderHeader(){
+  const today = dayKey();
+  const label = view === today ? 'Today'
+    : view === dayKey(shiftDays(new Date(),-1)) ? 'Yesterday'
+    : fromKey(view).toLocaleDateString(undefined,{ weekday:'long' });
+  document.getElementById('dayName').textContent = label;
+  document.getElementById('dateStamp').textContent =
+    fromKey(view).toLocaleDateString(undefined,{ month:'short', day:'numeric', year:'numeric' });
+}
+
+function renderCal(){
+  const today = dayKey();
+  const end = fromKey(stripEnd);
+  let html = '';
+  for (let i=6;i>=0;i--){
+    const d = shiftDays(end,-i), k = dayKey(d);
+    const cls = [ 'day', k===view?'sel':'', k===today?'now':'',
+                  k>today?'future':'', allDone(k)?'done':'' ].filter(Boolean).join(' ');
+    html += `<button class="${cls}" data-day="${k}">
+      <span class="dl">${'SMTWTFS'[d.getDay()]}</span>
+      <span class="dn">${d.getDate()}</span>
+      <span class="dd"></span></button>`;
+  }
+  document.getElementById('calDays').innerHTML = html;
+  document.getElementById('navNext').disabled = stripEnd >= today;
+}
+
+function timerCard(t){
+  const goalMs = t.goalMin*60000;
+  const ms = elapsed(t.id);
+  const isToday = view === dayKey();
+  const running = isToday && S.active && S.active.timerId === t.id;
+  const hit = ms >= goalMs;
+  const n = sessions(t.id).length + (running?1:0);
+
+  const parts = sessions(t.id).map(x => ({ d: x.e-x.s, now:false }));
+  if (running) parts.push({ d: Date.now()-S.active.startedAt, now:true });
+  const total = parts.reduce((a,p) => a+p.d, 0) || 1;
+  const scale = hit ? total : goalMs;
+  const segs = parts.map(p =>
+    `<div class="seg${p.now && !hit ? ' now':''}" style="flex:0 0 ${(p.d/scale*100).toFixed(3)}%"></div>`).join('');
+
+  const control = isToday
+    ? `<button class="go${running?' stop':''}" data-toggle="${t.id}">${running?'Stop':'Start'}</button>`
+    : `<div class="nudge">
+         <button data-adj="${t.id}" data-min="-15">&minus; 15 min</button>
+         <button data-adj="${t.id}" data-min="15">+ 15 min</button>
+       </div>`;
+
+  return `<div class="card${running?' on':''}">
+    <div class="row">
+      <div>
+        <div class="name">${esc(t.name)}</div>
+        <div class="sub">${n} ${n===1?'session':'sessions'}</div>
+      </div>
+      <button class="edit" data-edit="timer" data-id="${t.id}">EDIT</button>
+    </div>
+    <div class="clock${hit?' hit':''}"><span data-clock="${t.id}">${hms(ms)}</span><small>${goalLabel(t.goalMin)}</small></div>
+    <div class="bar${hit?' full':''}" data-bar="${t.id}">${segs}</div>
+    ${control}
+  </div>`;
+}
+
+function repCard(r){
+  const n = day().reps[r.id] || 0;
+  const full = n >= r.target;
+  const pips = Array.from({length:r.target}, (_,i) =>
+    `<button class="pip${i<n?' hit':''}" data-pip="${r.id}" data-i="${i}"
+       aria-label="${i+1} of ${r.target}" aria-pressed="${i<n}"><i></i></button>`).join('');
+  return `<div class="card">
+    <div class="row">
+      <div>
+        <div class="name">${esc(r.name)}</div>
+        <div class="sub">${full ? 'All done' : `${r.target-n} to go`}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="count${full?' full':''}">${n}<span style="color:var(--mute);font-size:14px">/${r.target}</span></span>
+        <button class="edit" data-edit="rep" data-id="${r.id}">EDIT</button>
+      </div>
+    </div>
+    <div class="pips">${pips}</div>
+  </div>`;
+}
+
+function chip(r){
+  const hit = (day().reps[r.id] || 0) >= 1;
+  return `<button class="chip${hit?' hit':''}" data-pip="${r.id}" data-i="0"
+    data-name="${esc(r.name)}" aria-pressed="${hit}" aria-label="${esc(r.name)}"
+    ><span>${esc(r.name)}</span></button>`;
+}
+
+function render(){
+  renderHeader();
+  renderCal();
+
+  document.getElementById('timers').innerHTML =
+    S.timers.length ? S.timers.map(timerCard).join('')
+    : `<div class="empty">No time goals yet. Tap + to add one, then start and stop it through the day.</div>`;
+
+  const many = S.reps.filter(r => r.target > 1);
+  const once = S.reps.filter(r => r.target === 1);
+  document.getElementById('reps').innerHTML = many.map(repCard).join('');
+  document.getElementById('tiles').innerHTML = once.map(chip).join('');
+  if (!S.reps.length)
+    document.getElementById('reps').innerHTML =
+      `<div class="empty">No rep goals yet. Tap + to add something you do a set number of times a day.</div>`;
+}
+
+function renderSwatches(){
+  document.getElementById('swatches').innerHTML = Object.entries(THEMES).map(([id,t]) =>
+    `<button class="sw" data-theme="${id}" aria-pressed="${S.theme===id}"
+       style="background:${t.paper};border-color:${t.line}">
+       <span class="pal"><b style="background:${t.ink}"></b><b style="background:${t.live}"></b><b style="background:${t.mark}"></b></span>
+       <span class="lbl" style="color:${t.mute}">${t.label}</span>
+     </button>`).join('');
+}
+
+function applyTheme(id){
+  const t = THEMES[id] || THEMES.lilac;
+  const r = document.documentElement.style;
+  ['paper','card','ink','mute','line','track','live','mark'].forEach(k => r.setProperty('--'+k, t[k]));
+  document.querySelector('meta[name=theme-color]').setAttribute('content', t.paper);
+  document.querySelector('meta[name=apple-mobile-web-app-status-bar-style]')
+    .setAttribute('content', id === 'ink' ? 'black-translucent' : 'default');
+}
+
+/* only the running card ticks */
+function tick(){
+  if (!S || !S.active || view !== dayKey()) return;
+  const t = S.timers.find(x => x.id === S.active.timerId);
+  if (!t) return;
+  const el = document.querySelector(`[data-clock="${t.id}"]`);
+  if (!el) return;
+  const ms = elapsed(t.id);
+  el.textContent = hms(ms);
+  const goalMs = t.goalMin*60000;
+  if (ms >= goalMs){ render(); return; }
+  const seg = document.querySelector(`[data-bar="${t.id}"] .seg.now`);
+  if (seg) seg.style.flex = `0 0 ${((Date.now()-S.active.startedAt)/goalMs*100).toFixed(3)}%`;
+}
+
+/* ---------- actions ---------- */
+
+function stopActive(){
+  if (!S.active) return;
+  const { timerId, startedAt } = S.active;
+  const list = (day(dayKey()).sessions[timerId] ||= []);
+  if (Date.now() - startedAt > 1000) list.push({ s: startedAt, e: Date.now() });
+  S.active = null;
+}
+
+let saveTimer = null;
+function persist(now){
+  clearTimeout(saveTimer);
+  if (now){ store.set(S); return; }
+  saveTimer = setTimeout(() => store.set(S), 400);
+}
+
+document.body.addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  if (swallow){ swallow = false; if (!e.target.closest('.peek')) return; }
+
+  if (btn.dataset.day){ view = btn.dataset.day; render(); return; }
+
+  if (btn.dataset.shift){
+    const next = dayKey(shiftDays(fromKey(stripEnd), +btn.dataset.shift));
+    stripEnd = next > dayKey() ? dayKey() : next;
+    const first = dayKey(shiftDays(fromKey(stripEnd),-6));
+    if (view > stripEnd || view < first) view = stripEnd;
+    render(); return;
+  }
+
+  if (btn.dataset.toggle){
+    const id = btn.dataset.toggle;
+    const wasRunning = S.active && S.active.timerId === id;
+    stopActive();
+    if (!wasRunning) S.active = { timerId: id, startedAt: Date.now() };
+    persist(true); render(); return;
+  }
+
+  /* filling in a past day by hand */
+  if (btn.dataset.adj){
+    const id = btn.dataset.adj, mins = +btn.dataset.min;
+    const list = (day().sessions[id] ||= []);
+    if (mins > 0){
+      const base = fromKey(view); base.setHours(12,0,0,0);
+      const start = base.getTime() + list.length*mins*60000;
+      list.push({ s: start, e: start + mins*60000 });
+    } else {
+      let drop = -mins*60000;
+      while (drop > 0 && list.length){
+        const last = list[list.length-1], dur = last.e - last.s;
+        if (dur <= drop){ drop -= dur; list.pop(); }
+        else { last.e -= drop; drop = 0; }
+      }
+    }
+    persist(); render(); return;
+  }
+
+  if (btn.dataset.pip){
+    const d = day(), id = btn.dataset.pip, i = +btn.dataset.i;
+    const n = d.reps[id] || 0;
+    // an empty mark fills itself and everything before it; a filled one clears
+    // itself and everything after, so tapping the same mark twice undoes it
+    d.reps[id] = i < n ? i : i + 1;
+    persist(); render(); return;
+  }
+
+  if (btn.dataset.theme){
+    S.theme = btn.dataset.theme;
+    applyTheme(S.theme); renderSwatches(); persist(true); return;
+  }
+
+  if (btn.dataset.edit){ openSheet(btn.dataset.edit, btn.dataset.id); return; }
+  if (btn.dataset.new){ openSheet(btn.dataset.new, null); return; }
+  if (btn.id === 'add'){ openPicker(); return; }
+
+  if (btn.id === 'reset'){
+    if (!btn.classList.contains('armed')){
+      btn.classList.add('armed');
+      btn.textContent = 'Tap again to wipe everything';
+      setTimeout(() => {
+        btn.classList.remove('armed');
+        btn.textContent = 'Reset to defaults';
+      }, 4000);
+      return;
+    }
+    const theme = S.theme;
+    S = seed(); S.theme = theme;
+    view = dayKey(); stripEnd = dayKey();
+    persist(true); render(); renderSwatches();
+    return;
+  }
+});
+
+/* ---------- press and hold a chip to read its full name ---------- */
+
+const peek = document.getElementById('peek');
+let holdTimer = null, swallow = false;
+
+function showPeek(el, name, id){
+  peek.innerHTML = `<span class="pn">${esc(name)}</span>
+    <button class="pe" data-edit="rep" data-id="${id}">EDIT</button>`;
+  peek.classList.add('open');
+  peek.style.left = '0px'; peek.style.top = '0px';
+  const r = el.getBoundingClientRect(), p = peek.getBoundingClientRect();
+  const x = Math.max(8, Math.min(r.left + r.width/2 - p.width/2, innerWidth - p.width - 8));
+  const above = r.top - p.height - 8;
+  peek.style.left = x + 'px';
+  peek.style.top = (above > 8 ? above : r.bottom + 8) + 'px';
+}
+const hidePeek = () => peek.classList.remove('open');
+
+document.addEventListener('pointerdown', e => {
+  if (peek.classList.contains('open') && !e.target.closest('.peek')) hidePeek();
+  const c = e.target.closest('.chip');
+  if (!c) return;
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(() => {
+    swallow = true;                 // a hold reads the name, it doesn't tick it
+    showPeek(c, c.dataset.name, c.dataset.pip);
+    if (navigator.vibrate) navigator.vibrate(8);
+  }, 380);
+});
+
+['pointerup','pointercancel'].forEach(ev =>
+  document.addEventListener(ev, () => clearTimeout(holdTimer)));
+document.addEventListener('scroll', () => { clearTimeout(holdTimer); hidePeek(); }, true);
+
+/* ---------- sheet ---------- */
+
+const veil = document.getElementById('veil');
+const $ = id => document.getElementById(id);
+
+function openPicker(){
+  sheet = { kind:'pick' };
+  $('sheetTitle').textContent = 'What are you tracking?';
+  $('pickType').style.display = 'flex';
+  $('formWrap').style.display = 'none';
+  veil.classList.add('open');
+}
+
+function openSheet(kind, id){
+  hidePeek();
+  sheet = { kind, id };
+  const isTimer = kind === 'timer';
+  const item = id ? (isTimer ? S.timers : S.reps).find(x => x.id === id) : null;
+
+  $('pickType').style.display = 'none';
+  $('formWrap').style.display = 'block';
+  $('sheetTitle').textContent = item ? item.name : (isTimer ? 'New time goal' : 'New rep goal');
+  $('timeFields').style.display = isTimer ? 'flex' : 'none';
+  $('repFields').style.display  = isTimer ? 'none' : 'block';
+  $('kill').style.display = item ? 'block' : 'none';
+
+  $('fName').value = item ? item.name : '';
+  if (isTimer){
+    const g = item ? item.goalMin : 120;
+    $('fH').value = Math.floor(g/60); $('fM').value = g%60;
+  } else {
+    $('fT').value = item ? item.target : 3;
+  }
+  veil.classList.add('open');
+}
+
+function closeSheet(){ veil.classList.remove('open'); sheet = null; }
+$('cancel').onclick = closeSheet;
+veil.onclick = e => { if (e.target === veil) closeSheet(); };
+
+$('save').onclick = () => {
+  const isTimer = sheet.kind === 'timer';
+  const name = $('fName').value.trim() || (isTimer ? 'Time goal' : 'Rep goal');
+  let patch;
+  if (isTimer){
+    const h = +$('fH').value || 0, m = +$('fM').value || 0;
+    patch = { name, goalMin: Math.max(1, h*60 + m) };
+  } else {
+    patch = { name, target: Math.min(24, Math.max(1, +$('fT').value || 1)) };
+  }
+  const list = isTimer ? S.timers : S.reps;
+  if (sheet.id) Object.assign(list.find(x => x.id === sheet.id), patch);
+  else list.push({ id: uid(), ...patch });
+  closeSheet(); persist(true); render();
+};
+
+$('kill').onclick = () => {
+  if (sheet.kind === 'timer'){
+    if (S.active && S.active.timerId === sheet.id) S.active = null;
+    S.timers = S.timers.filter(x => x.id !== sheet.id);
+  } else {
+    S.reps = S.reps.filter(x => x.id !== sheet.id);
+  }
+  closeSheet(); persist(true); render();
+};
+
+/* ---------- boot ---------- */
+
+let lastDay = dayKey();
+(async function(){
+  S = (await store.get()) || seed();
+  if (!S.theme) S.theme = 'lilac';
+  if (!S.v) S.v = 0;
+  migrate();
+  applyTheme(S.theme);
+  normalize();
+  render();
+  renderSwatches();
+  persist(true);
+
+  setInterval(tick, 1000);
+
+  setInterval(() => {
+    if (dayKey() !== lastDay){
+      const wasToday = view === lastDay;
+      lastDay = dayKey(); normalize();
+      if (wasToday){ view = lastDay; stripEnd = lastDay; }
+      render(); persist(true);
+    }
+  }, 15000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (dayKey() !== lastDay){
+      const wasToday = view === lastDay;
+      lastDay = dayKey(); normalize();
+      if (wasToday){ view = lastDay; stripEnd = lastDay; }
+      persist(true);
+    }
+    render();
+  });
+})();
+</script>
