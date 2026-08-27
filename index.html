@@ -5,10 +5,9 @@
 <meta name="theme-color" content="#E9E6F0">
 <title>Day</title>
 <meta name="apple-mobile-web-app-title" content="Day">
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
-<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=2">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=2">
-<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=2">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -120,13 +119,16 @@
   .reset{font-family:var(--mono);font-size:10px;color:var(--mute);letter-spacing:.1em;
          text-transform:uppercase;padding:12px 14px;margin-top:6px;border-bottom:1px solid var(--line)}
   .reset.armed{color:var(--mark);border-color:var(--mark)}
-  .swatches{display:flex;gap:9px}
-  .sw{flex:1;border-radius:11px;border:1px solid var(--line);padding:10px 8px 9px;text-align:left;
-      display:flex;flex-direction:column;gap:8px;transition:box-shadow .15s ease}
+  .swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  @media (min-width:420px){ .swatches{grid-template-columns:repeat(6,1fr)} }
+  .sw{border-radius:10px;border:1px solid var(--line);padding:7px 6px 6px;text-align:left;
+      display:flex;flex-direction:column;gap:6px;overflow:hidden;transition:box-shadow .15s ease}
   .sw[aria-pressed="true"]{box-shadow:inset 0 0 0 2px var(--ink)}
-  .sw .pal{display:flex;gap:4px}
-  .sw .pal b{width:9px;height:9px;border-radius:50%;display:block}
-  .sw .lbl{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase}
+  .sw .pal{display:flex;gap:3px}
+  .sw .pal b{width:7px;height:7px;border-radius:50%;display:block;flex:0 0 7px}
+  .sw .lbl{font-family:var(--mono);font-size:7.5px;letter-spacing:.03em;text-transform:uppercase;
+           line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+           overflow:hidden;word-break:break-word}
   body,.card,.tile,.bar,.sw{transition:background-color .2s ease,border-color .2s ease,color .2s ease}
 
   .veil{position:fixed;inset:0;background:rgba(34,27,51,.4);display:none;align-items:flex-end;z-index:9}
@@ -225,15 +227,48 @@ const KEY = 'daytracker.v1';
 let mem = null;
 
 const THEMES = {
-  lilac: { label:'Lilac', paper:'#E9E6F0', card:'#F4F2F8', ink:'#221B33', mute:'#6E6584',
-           line:'#D3CDE0', track:'#DFDAE9', live:'#1F7A6B', mark:'#A32B6B' },
-  moss:  { label:'Moss',  paper:'#E6EAE1', card:'#F1F4ED', ink:'#22291F', mute:'#66705E',
-           line:'#CDD4C6', track:'#D8DED2', live:'#2E6B4F', mark:'#A8541E' },
-  slate: { label:'Slate', paper:'#E3E8EE', card:'#F0F3F7', ink:'#17222E', mute:'#5F707F',
-           line:'#C8D1DB', track:'#D5DCE4', live:'#146B5E', mark:'#B23A5B' },
-  ink:   { label:'Ink',   paper:'#17131F', card:'#211B2B', ink:'#EDE9F2', mute:'#8F86A6',
-           line:'#332B42', track:'#2C2439', live:'#4FBFA8', mark:'#E3689F' }
+  /* mine */
+  lilac:{ label:'Lilac', dark:false, paper:'#E9E6F0', card:'#F4F2F8', ink:'#221B33', mute:'#6E6584', line:'#D3CDE0', track:'#DFDAE9', live:'#1F7A6B', mark:'#A32B6B' },
+  moss:{ label:'Moss', dark:false, paper:'#E6EAE1', card:'#F1F4ED', ink:'#22291F', mute:'#66705E', line:'#CDD4C6', track:'#D8DED2', live:'#2E6B4F', mark:'#A8541E' },
+  slate:{ label:'Slate', dark:false, paper:'#E3E8EE', card:'#F0F3F7', ink:'#17222E', mute:'#5F707F', line:'#C8D1DB', track:'#D5DCE4', live:'#146B5E', mark:'#B23A5B' },
+  ink:{ label:'Ink', dark:true, paper:'#17131F', card:'#211B2B', ink:'#EDE9F2', mute:'#8F86A6', line:'#332B42', track:'#2C2439', live:'#4FBFA8', mark:'#E3689F' },
+  /* light */
+  solarLight:{ label:'Solar Light', dark:false, paper:'#FDF6E3', card:'#F5EFDC', ink:'#073642', mute:'#657B83', line:'#EEE8D5', track:'#E8E1CB', live:'#859900', mark:'#D33682' },
+  latte:{ label:'Latte', dark:false, paper:'#EFF1F5', card:'#E6E9EF', ink:'#4C4F69', mute:'#8C8FA1', line:'#CCD0DA', track:'#CCD0DA', live:'#40A02B', mark:'#EA76CB' },
+  gruvLight:{ label:'Gruv Light', dark:false, paper:'#FBF1C7', card:'#F2E5BC', ink:'#3C3836', mute:'#7C6F64', line:'#EBDBB2', track:'#E6D5A8', live:'#79740E', mark:'#8F3F71' },
+  dawn:{ label:'Rosé Dawn', dark:false, paper:'#FAF4ED', card:'#FFFAF3', ink:'#575279', mute:'#9893A5', line:'#F2E9E1', track:'#EFE4DA', live:'#286983', mark:'#B4637A' },
+  /* dark */
+  solarDark:{ label:'Solar Dark', dark:true, paper:'#002B36', card:'#073642', ink:'#93A1A1', mute:'#586E75', line:'#0D4553', track:'#0B3C48', live:'#2AA198', mark:'#D33682' },
+  nord:{ label:'Nord', dark:true, paper:'#2E3440', card:'#3B4252', ink:'#ECEFF4', mute:'#7B88A0', line:'#434C5E', track:'#434C5E', live:'#A3BE8C', mark:'#B48EAD' },
+  mocha:{ label:'Mocha', dark:true, paper:'#1E1E2E', card:'#313244', ink:'#CDD6F4', mute:'#7F849C', line:'#45475A', track:'#45475A', live:'#A6E3A1', mark:'#F5C2E7' },
+  gruvDark:{ label:'Gruv Dark', dark:true, paper:'#282828', card:'#32302F', ink:'#EBDBB2', mute:'#928374', line:'#3C3836', track:'#3C3836', live:'#B8BB26', mark:'#D3869B' },
+  dracula:{ label:'Dracula', dark:true, paper:'#282A36', card:'#343746', ink:'#F8F8F2', mute:'#6272A4', line:'#44475A', track:'#44475A', live:'#50FA7B', mark:'#FF79C6' },
+  tokyo:{ label:'Tokyo Night', dark:true, paper:'#1A1B26', card:'#24283B', ink:'#C0CAF5', mute:'#565F89', line:'#292E42', track:'#292E42', live:'#9ECE6A', mark:'#BB9AF7' },
+  oneDark:{ label:'One Dark', dark:true, paper:'#282C34', card:'#2F343E', ink:'#ABB2BF', mute:'#5C6370', line:'#3E4451', track:'#3E4451', live:'#98C379', mark:'#C678DD' },
+  monokai:{ label:'Monokai', dark:true, paper:'#272822', card:'#31322B', ink:'#F8F8F2', mute:'#75715E', line:'#3E3D32', track:'#3E3D32', live:'#A6E22E', mark:'#F92672' },
+  rosePine:{ label:'Rosé Pine', dark:true, paper:'#191724', card:'#1F1D2E', ink:'#E0DEF4', mute:'#6E6A86', line:'#26233A', track:'#26233A', live:'#31748F', mark:'#EBBCBA' }
 };
+
+/* Editor themes mute their comment color hard, which is right for code and too
+   faint for the small labels here. Nudge mute toward the text colour until it
+   clears WCAG AA, so any palette stays readable without altering its character. */
+const rgb = h => [1,3,5].map(i => parseInt(h.substr(i,2),16));
+const hex = a => '#' + a.map(v => Math.round(v).toString(16).padStart(2,'0')).join('');
+const lum = h => {
+  const v = rgb(h).map(c => { c/=255; return c<=0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); });
+  return 0.2126*v[0] + 0.7152*v[1] + 0.0722*v[2];
+};
+const contrast = (a,b) => {
+  const x = lum(a), y = lum(b);
+  return (Math.max(x,y)+0.05) / (Math.min(x,y)+0.05);
+};
+function legibleMute(mute, paper, ink){
+  const a = rgb(mute), b = rgb(ink);
+  let out = mute;
+  for (let i=0; i<=12 && contrast(out,paper) < 4.5; i++)
+    out = hex(a.map((v,j) => v + (b[j]-v) * (i/12)));
+  return out;
+}
 
 const hasLocal = (() => {
   try { localStorage.setItem('_t','1'); localStorage.removeItem('_t'); return true; } catch(e){ return false; }
@@ -471,17 +506,18 @@ function renderSwatches(){
     `<button class="sw" data-theme="${id}" aria-pressed="${S.theme===id}"
        style="background:${t.paper};border-color:${t.line}">
        <span class="pal"><b style="background:${t.ink}"></b><b style="background:${t.live}"></b><b style="background:${t.mark}"></b></span>
-       <span class="lbl" style="color:${t.mute}">${t.label}</span>
+       <span class="lbl" style="color:${legibleMute(t.mute,t.paper,t.ink)}">${t.label}</span>
      </button>`).join('');
 }
 
 function applyTheme(id){
   const t = THEMES[id] || THEMES.lilac;
   const r = document.documentElement.style;
-  ['paper','card','ink','mute','line','track','live','mark'].forEach(k => r.setProperty('--'+k, t[k]));
+  ['paper','card','ink','line','track','live','mark'].forEach(k => r.setProperty('--'+k, t[k]));
+  r.setProperty('--mute', legibleMute(t.mute, t.paper, t.ink));
   document.querySelector('meta[name=theme-color]').setAttribute('content', t.paper);
   document.querySelector('meta[name=apple-mobile-web-app-status-bar-style]')
-    .setAttribute('content', id === 'ink' ? 'black-translucent' : 'default');
+    .setAttribute('content', t.dark ? 'black-translucent' : 'default');
 }
 
 /* only the running card ticks */
