@@ -144,6 +144,13 @@
   input:focus{outline:2px solid var(--ink);outline-offset:-1px}
   .pair{display:flex;gap:10px}
   .pair>div{flex:1}
+  .dow{display:flex;gap:5px;margin-bottom:9px}
+  .dow button{flex:1;padding:11px 0;border:1px solid var(--line);border-radius:9px;background:var(--card);
+              font-family:var(--mono);font-size:12px;color:var(--mute)}
+  .dow button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .dowquick{display:flex;gap:6px;margin-bottom:18px}
+  .dowquick button{flex:1;padding:8px 0;border-radius:8px;font-family:var(--mono);
+                   font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
   .hint{font-family:var(--mono);font-size:10px;color:var(--mute);margin:-8px 0 16px;letter-spacing:.03em;line-height:1.6}
   .pick{display:flex;flex-direction:column;gap:9px;margin-bottom:6px}
   .pick button{text-align:left;padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
@@ -170,12 +177,17 @@
   <button class="calnav" data-shift="7" id="navNext" aria-label="Later week">&rsaquo;</button>
 </div>
 
-<div class="band">Time</div>
+<div class="empty" id="blank"></div>
+
+<div class="band" id="timeBand">Time</div>
 <div id="timers"></div>
 
-<div class="band">Reps</div>
+<div class="band" id="repBand">Reps</div>
 <div id="reps"></div>
 <div class="tiles" id="tiles"></div>
+
+<div class="band" id="doneBand">Done</div>
+<div class="tiles" id="done"></div>
 
 <div class="band">Look</div>
 <div class="swatches" id="swatches"></div>
@@ -214,6 +226,14 @@
         <input id="fT" type="number" min="1" max="24" inputmode="numeric">
         <div class="hint">Set this to 1 and it becomes a square checkbox, packed alongside your other once-a-day items.</div>
       </div>
+      <label>Which days</label>
+      <div class="dow" id="dow"></div>
+      <div class="dowquick">
+        <button data-preset="all">Every day</button>
+        <button data-preset="wk">Weekdays</button>
+        <button data-preset="we">Weekends</button>
+      </div>
+
       <button class="save" id="save">Save</button>
       <button class="kill" id="kill">Delete this goal</button>
     </div>
@@ -301,18 +321,22 @@ let view = dayKey();      // the day on screen
 let stripEnd = dayKey();  // rightmost day of the calendar strip
 let sheet = null;         // { kind, id } | { kind:'pick' }
 
+const ALL_DAYS = [0,1,2,3,4,5,6];
+const DOW = ['S','M','T','W','T','F','S'];
+const DOW_FULL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
 function seed(){
   return {
-    v: 3,
+    v: 4,
     theme: 'lilac',
-    timers: [{ id: uid(), name: 'Standing desk', goalMin: 120 }],
+    timers: [{ id: uid(), name: 'Standing desk', goalMin: 120, days: ALL_DAYS }],
     reps: [
-      { id: uid(), name: 'Heel raises',     target: 3 },
-      { id: uid(), name: 'Side plank clam', target: 3 },
-      { id: uid(), name: 'Wall-sit',        target: 3 },
-      { id: uid(), name: 'Creatine',        target: 1 },
-      { id: uid(), name: 'Magnesium',       target: 1 },
-      { id: uid(), name: 'Arctic cod oil',  target: 1 }
+      { id: uid(), name: 'Heel raises',     target: 3, days: ALL_DAYS },
+      { id: uid(), name: 'Side plank clam', target: 3, days: ALL_DAYS },
+      { id: uid(), name: 'Wall-sit',        target: 3, days: ALL_DAYS },
+      { id: uid(), name: 'Creatine',        target: 1, days: ALL_DAYS },
+      { id: uid(), name: 'Magnesium',       target: 1, days: ALL_DAYS },
+      { id: uid(), name: 'Arctic cod oil',  target: 1, days: ALL_DAYS }
     ],
     active: null,
     days: {}
@@ -344,7 +368,11 @@ function migrate(){
   }
   // a target that got stored as text would sort into the wrong shape
   S.reps.forEach(r => { r.target = Math.min(24, Math.max(1, parseInt(r.target,10) || 1)); });
-  S.v = 3;
+  if (S.v < 4){
+    // goals made before schedules existed keep running every day
+    [...S.timers, ...S.reps].forEach(x => { if (!Array.isArray(x.days) || !x.days.length) x.days = ALL_DAYS; });
+  }
+  S.v = 4;
 }
 
 function day(k = view){
@@ -369,6 +397,18 @@ function normalize(){
 
 const sessions = (id, k = view) => day(k).sessions[id] || [];
 
+/* is this goal meant to run on that date? */
+const onDay = (item, k = view) =>
+  !Array.isArray(item.days) || item.days.includes(fromKey(k).getDay());
+const dowLabel = days => {
+  if (!Array.isArray(days) || days.length === 7) return '';
+  if (!days.length) return '';
+  const sorted = [...days].sort();
+  if (sorted.join() === '1,2,3,4,5') return 'Weekdays';
+  if (sorted.join() === '0,6') return 'Weekends';
+  return sorted.map(d => DOW_FULL[d]).join(' ');
+};
+
 function elapsed(id, k = view){
   let ms = sessions(id,k).reduce((a,x) => a + (x.e - x.s), 0);
   if (S.active && S.active.timerId === id && k === dayKey()) ms += Date.now() - S.active.startedAt;
@@ -386,9 +426,11 @@ function goalLabel(min){
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function allDone(k){
-  if (!S.timers.length && !S.reps.length) return false;
-  return S.timers.every(t => elapsed(t.id,k) >= t.goalMin*60000)
-      && S.reps.every(r => (day(k).reps[r.id]||0) >= r.target);
+  const ts = S.timers.filter(t => onDay(t,k));
+  const rs = S.reps.filter(r => onDay(r,k));
+  if (!ts.length && !rs.length) return false;
+  return ts.every(t => elapsed(t.id,k) >= t.goalMin*60000)
+      && rs.every(r => (day(k).reps[r.id]||0) >= r.target);
 }
 
 /* ---------- render ---------- */
@@ -446,7 +488,7 @@ function timerCard(t){
     <div class="row">
       <div>
         <div class="name">${esc(t.name)}</div>
-        <div class="sub">${n} ${n===1?'session':'sessions'}</div>
+        <div class="sub">${n} ${n===1?'session':'sessions'}${dowLabel(t.days) ? ' · '+dowLabel(t.days) : ''}</div>
       </div>
       <button class="edit" data-edit="timer" data-id="${t.id}">EDIT</button>
     </div>
@@ -466,7 +508,7 @@ function repCard(r){
     <div class="row">
       <div>
         <div class="name">${esc(r.name)}</div>
-        <div class="sub">${full ? 'All done' : `${r.target-n} to go`}</div>
+        <div class="sub">${full ? 'All done' : `${r.target-n} to go`}${dowLabel(r.days) ? ' · '+dowLabel(r.days) : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <span class="count${full?' full':''}">${n}<span style="color:var(--mute);font-size:14px">/${r.target}</span></span>
@@ -478,9 +520,17 @@ function repCard(r){
 }
 
 function chip(r){
-  const hit = (day().reps[r.id] || 0) >= 1;
-  return `<button class="chip${hit?' hit':''}" data-pip="${r.id}" data-i="0"
-    data-name="${esc(r.name)}" aria-pressed="${hit}" aria-label="${esc(r.name)}"
+  return `<button class="chip" data-pip="${r.id}" data-i="0" data-rep="${r.id}"
+    data-name="${esc(r.name)}" aria-pressed="false" aria-label="${esc(r.name)}"
+    ><span>${esc(r.name)}</span></button>`;
+}
+
+/* anything finished shrinks to a filled square and drops to the bottom.
+   Tapping it gives back one rep, so it climbs straight back out. */
+function doneChip(r){
+  return `<button class="chip hit" data-undo="${r.id}" data-rep="${r.id}"
+    data-name="${esc(r.name)}${r.target > 1 ? ' · '+r.target+'/'+r.target : ''}"
+    aria-pressed="true" aria-label="${esc(r.name)}, done"
     ><span>${esc(r.name)}</span></button>`;
 }
 
@@ -488,17 +538,39 @@ function render(){
   renderHeader();
   renderCal();
 
-  document.getElementById('timers').innerHTML =
-    S.timers.length ? S.timers.map(timerCard).join('')
-    : `<div class="empty">No time goals yet. Tap + to add one, then start and stop it through the day.</div>`;
+  const timers = S.timers.filter(t => onDay(t));
+  const reps = S.reps.filter(r => onDay(r));
+  const got = r => day().reps[r.id] || 0;
 
-  const many = S.reps.filter(r => r.target > 1);
-  const once = S.reps.filter(r => r.target === 1);
+  const many = reps.filter(r => r.target > 1 && got(r) < r.target);
+  const once = reps.filter(r => r.target === 1 && got(r) < 1);
+  const done = reps.filter(r => got(r) >= r.target);
+
+  /* a section only exists if it has something in it */
+  const show = (id, on) => document.getElementById(id).style.display = on ? '' : 'none';
+  // '' restores each element's stylesheet display: flex for bands, grid for chip rows
+  show('timeBand', timers.length);
+  show('timers', timers.length);
+  show('repBand', reps.length);
+  show('reps', many.length);
+  show('tiles', once.length);
+  show('doneBand', done.length);
+  show('done', done.length);
+
+  document.getElementById('timers').innerHTML = timers.map(timerCard).join('');
   document.getElementById('reps').innerHTML = many.map(repCard).join('');
   document.getElementById('tiles').innerHTML = once.map(chip).join('');
-  if (!S.reps.length)
-    document.getElementById('reps').innerHTML =
-      `<div class="empty">No rep goals yet. Tap + to add something you do a set number of times a day.</div>`;
+  document.getElementById('done').innerHTML = done.map(doneChip).join('');
+
+  const blank = document.getElementById('blank');
+  if (timers.length || reps.length){
+    blank.style.display = 'none';
+  } else {
+    blank.style.display = '';
+    blank.textContent = (S.timers.length || S.reps.length)
+      ? `Nothing scheduled for ${DOW_FULL[fromKey(view).getDay()]}.`
+      : 'Nothing here yet. Tap + to add a time goal, or something you do a set number of times a day.';
+  }
 }
 
 function renderSwatches(){
@@ -594,6 +666,12 @@ document.body.addEventListener('click', e => {
     persist(); render(); return;
   }
 
+  if (btn.dataset.undo){
+    const d = day(), r = S.reps.find(x => x.id === btn.dataset.undo);
+    d.reps[r.id] = Math.max(0, (d.reps[r.id] || 0) - 1);
+    persist(); render(); return;
+  }
+
   if (btn.dataset.pip){
     const d = day(), id = btn.dataset.pip, i = +btn.dataset.i;
     const n = d.reps[id] || 0;
@@ -601,6 +679,17 @@ document.body.addEventListener('click', e => {
     // itself and everything after, so tapping the same mark twice undoes it
     d.reps[id] = i < n ? i : i + 1;
     persist(); render(); return;
+  }
+
+  if (btn.dataset.dow){
+    const d = +btn.dataset.dow;
+    sheetDays.has(d) ? sheetDays.delete(d) : sheetDays.add(d);
+    renderDow(); return;
+  }
+  if (btn.dataset.preset){
+    const p = btn.dataset.preset;
+    sheetDays = new Set(p === 'wk' ? [1,2,3,4,5] : p === 'we' ? [0,6] : ALL_DAYS);
+    renderDow(); return;
   }
 
   if (btn.dataset.theme){
@@ -655,7 +744,7 @@ document.addEventListener('pointerdown', e => {
   clearTimeout(holdTimer);
   holdTimer = setTimeout(() => {
     swallow = true;                 // a hold reads the name, it doesn't tick it
-    showPeek(c, c.dataset.name, c.dataset.pip);
+    showPeek(c, c.dataset.name, c.dataset.rep);
     if (navigator.vibrate) navigator.vibrate(8);
   }, 380);
 });
@@ -668,6 +757,13 @@ document.addEventListener('scroll', () => { clearTimeout(holdTimer); hidePeek();
 
 const veil = document.getElementById('veil');
 const $ = id => document.getElementById(id);
+
+let sheetDays = new Set(ALL_DAYS);
+
+function renderDow(){
+  document.getElementById('dow').innerHTML = DOW.map((d,i) =>
+    `<button data-dow="${i}" aria-pressed="${sheetDays.has(i)}" aria-label="${DOW_FULL[i]}">${d}</button>`).join('');
+}
 
 function openPicker(){
   sheet = { kind:'pick' };
@@ -690,6 +786,8 @@ function openSheet(kind, id){
   $('repFields').style.display  = isTimer ? 'none' : 'block';
   $('kill').style.display = item ? 'block' : 'none';
 
+  sheetDays = new Set(item && Array.isArray(item.days) && item.days.length ? item.days : ALL_DAYS);
+  renderDow();
   $('fName').value = item ? item.name : '';
   if (isTimer){
     const g = item ? item.goalMin : 120;
@@ -714,6 +812,7 @@ $('save').onclick = () => {
   } else {
     patch = { name, target: Math.min(24, Math.max(1, +$('fT').value || 1)) };
   }
+  patch.days = sheetDays.size ? [...sheetDays].sort((a,b)=>a-b) : ALL_DAYS;
   const list = isTimer ? S.timers : S.reps;
   if (sheet.id) Object.assign(list.find(x => x.id === sheet.id), patch);
   else list.push({ id: uid(), ...patch });
