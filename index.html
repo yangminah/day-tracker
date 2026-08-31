@@ -158,6 +158,8 @@
   .pick .ps{font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:4px}
   .save{width:100%;padding:14px;border-radius:11px;background:var(--ink);color:var(--paper);
         font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+  .saveDay{width:100%;padding:13px;margin-top:8px;border:1px solid var(--line);border-radius:11px;
+           font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
   .kill{width:100%;padding:12px;margin-top:8px;color:var(--mark);font-family:var(--mono);font-size:12px;letter-spacing:.08em}
   .cancel{width:100%;padding:10px;color:var(--mute);font-family:var(--mono);font-size:12px;letter-spacing:.08em}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -234,7 +236,8 @@
         <button data-preset="we">Weekends</button>
       </div>
 
-      <button class="save" id="save">Save</button>
+      <button class="save" id="save">Save for every day</button>
+      <button class="saveDay" id="saveDay">Just for this day</button>
       <button class="kill" id="kill">Delete this goal</button>
     </div>
 
@@ -380,6 +383,8 @@ function day(k = view){
   const d = S.days[k];
   if (!d.sessions) d.sessions = {};
   if (!d.reps) d.reps = {};
+  if (!d.targets) d.targets = {};   // rep count just for this day
+  if (!d.goals) d.goals = {};       // time goal just for this day
   return d;
 }
 
@@ -396,6 +401,13 @@ function normalize(){
 }
 
 const sessions = (id, k = view) => day(k).sessions[id] || [];
+
+/* A goal carries a default, and any single day may override it without
+   touching the others. */
+const targetOf = (r, k = view) => day(k).targets[r.id] ?? r.target;
+const goalOf   = (t, k = view) => day(k).goals[t.id] ?? t.goalMin;
+const isOverride = (item, k = view) =>
+  day(k).targets[item.id] !== undefined || day(k).goals[item.id] !== undefined;
 
 /* is this goal meant to run on that date? */
 const onDay = (item, k = view) =>
@@ -429,8 +441,8 @@ function allDone(k){
   const ts = S.timers.filter(t => onDay(t,k));
   const rs = S.reps.filter(r => onDay(r,k));
   if (!ts.length && !rs.length) return false;
-  return ts.every(t => elapsed(t.id,k) >= t.goalMin*60000)
-      && rs.every(r => (day(k).reps[r.id]||0) >= r.target);
+  return ts.every(t => elapsed(t.id,k) >= goalOf(t,k)*60000)
+      && rs.every(r => (day(k).reps[r.id]||0) >= targetOf(r,k));
 }
 
 /* ---------- render ---------- */
@@ -463,7 +475,8 @@ function renderCal(){
 }
 
 function timerCard(t){
-  const goalMs = t.goalMin*60000;
+  const mins = goalOf(t);
+  const goalMs = mins*60000;
   const ms = elapsed(t.id);
   const isToday = view === dayKey();
   const running = isToday && S.active && S.active.timerId === t.id;
@@ -488,30 +501,31 @@ function timerCard(t){
     <div class="row">
       <div>
         <div class="name">${esc(t.name)}</div>
-        <div class="sub">${n} ${n===1?'session':'sessions'}${dowLabel(t.days) ? ' · '+dowLabel(t.days) : ''}</div>
+        <div class="sub">${n} ${n===1?'session':'sessions'}${dowLabel(t.days) ? ' · '+dowLabel(t.days) : ''}${isOverride(t) ? ' · just today' : ''}</div>
       </div>
       <button class="edit" data-edit="timer" data-id="${t.id}">EDIT</button>
     </div>
-    <div class="clock${hit?' hit':''}"><span data-clock="${t.id}">${hms(ms)}</span><small>${goalLabel(t.goalMin)}</small></div>
+    <div class="clock${hit?' hit':''}"><span data-clock="${t.id}">${hms(ms)}</span><small>${goalLabel(mins)}</small></div>
     <div class="bar${hit?' full':''}" data-bar="${t.id}">${segs}</div>
     ${control}
   </div>`;
 }
 
 function repCard(r){
+  const target = targetOf(r);
   const n = day().reps[r.id] || 0;
-  const full = n >= r.target;
-  const pips = Array.from({length:r.target}, (_,i) =>
+  const full = n >= target;
+  const pips = Array.from({length:target}, (_,i) =>
     `<button class="pip${i<n?' hit':''}" data-pip="${r.id}" data-i="${i}"
-       aria-label="${i+1} of ${r.target}" aria-pressed="${i<n}"><i></i></button>`).join('');
+       aria-label="${i+1} of ${target}" aria-pressed="${i<n}"><i></i></button>`).join('');
   return `<div class="card">
     <div class="row">
       <div>
         <div class="name">${esc(r.name)}</div>
-        <div class="sub">${full ? 'All done' : `${r.target-n} to go`}${dowLabel(r.days) ? ' · '+dowLabel(r.days) : ''}</div>
+        <div class="sub">${full ? 'All done' : `${target-n} to go`}${dowLabel(r.days) ? ' · '+dowLabel(r.days) : ''}${isOverride(r) ? ' · just today' : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
-        <span class="count${full?' full':''}">${n}<span style="color:var(--mute);font-size:14px">/${r.target}</span></span>
+        <span class="count${full?' full':''}">${n}<span style="color:var(--mute);font-size:14px">/${target}</span></span>
         <button class="edit" data-edit="rep" data-id="${r.id}">EDIT</button>
       </div>
     </div>
@@ -529,7 +543,7 @@ function chip(r){
    Tapping it gives back one rep, so it climbs straight back out. */
 function doneChip(r){
   return `<button class="chip hit" data-undo="${r.id}" data-rep="${r.id}"
-    data-name="${esc(r.name)}${r.target > 1 ? ' · '+r.target+'/'+r.target : ''}"
+    data-name="${esc(r.name)}${targetOf(r) > 1 ? ' · '+targetOf(r)+'/'+targetOf(r) : ''}"
     aria-pressed="true" aria-label="${esc(r.name)}, done"
     ><span>${esc(r.name)}</span></button>`;
 }
@@ -542,9 +556,9 @@ function render(){
   const reps = S.reps.filter(r => onDay(r));
   const got = r => day().reps[r.id] || 0;
 
-  const many = reps.filter(r => r.target > 1 && got(r) < r.target);
-  const once = reps.filter(r => r.target === 1 && got(r) < 1);
-  const done = reps.filter(r => got(r) >= r.target);
+  const many = reps.filter(r => targetOf(r) > 1 && got(r) < targetOf(r));
+  const once = reps.filter(r => targetOf(r) === 1 && got(r) < 1);
+  const done = reps.filter(r => got(r) >= targetOf(r));
 
   /* a section only exists if it has something in it */
   const show = (id, on) => document.getElementById(id).style.display = on ? '' : 'none';
@@ -601,7 +615,7 @@ function tick(){
   if (!el) return;
   const ms = elapsed(t.id);
   el.textContent = hms(ms);
-  const goalMs = t.goalMin*60000;
+  const goalMs = goalOf(t)*60000;
   if (ms >= goalMs){ render(); return; }
   const seg = document.querySelector(`[data-bar="${t.id}"] .seg.now`);
   if (seg) seg.style.flex = `0 0 ${((Date.now()-S.active.startedAt)/goalMs*100).toFixed(3)}%`;
@@ -677,7 +691,7 @@ document.body.addEventListener('click', e => {
     const n = d.reps[id] || 0;
     // an empty mark fills itself and everything before it; a filled one clears
     // itself and everything after, so tapping the same mark twice undoes it
-    d.reps[id] = i < n ? i : i + 1;
+    d.reps[id] = i < n ? i : i + 1;   // tapping a filled mark clears from there on
     persist(); render(); return;
   }
 
@@ -790,11 +804,18 @@ function openSheet(kind, id){
   renderDow();
   $('fName').value = item ? item.name : '';
   if (isTimer){
-    const g = item ? item.goalMin : 120;
+    const g = item ? goalOf(item) : 120;
     $('fH').value = Math.floor(g/60); $('fM').value = g%60;
   } else {
-    $('fT').value = item ? item.target : 3;
+    $('fT').value = item ? targetOf(item) : 3;
   }
+
+  const today = dayKey();
+  const dayWord = view === today ? 'today'
+    : view === dayKey(shiftDays(new Date(),-1)) ? 'yesterday'
+    : DOW_FULL[fromKey(view).getDay()];
+  $('saveDay').textContent = `Just for ${dayWord}`;
+  $('saveDay').style.display = item ? 'block' : 'none';
   veil.classList.add('open');
 }
 
@@ -802,20 +823,41 @@ function closeSheet(){ veil.classList.remove('open'); sheet = null; }
 $('cancel').onclick = closeSheet;
 veil.onclick = e => { if (e.target === veil) closeSheet(); };
 
-$('save').onclick = () => {
+function readForm(){
   const isTimer = sheet.kind === 'timer';
   const name = $('fName').value.trim() || (isTimer ? 'Time goal' : 'Rep goal');
-  let patch;
-  if (isTimer){
-    const h = +$('fH').value || 0, m = +$('fM').value || 0;
-    patch = { name, goalMin: Math.max(1, h*60 + m) };
-  } else {
-    patch = { name, target: Math.min(24, Math.max(1, +$('fT').value || 1)) };
-  }
-  patch.days = sheetDays.size ? [...sheetDays].sort((a,b)=>a-b) : ALL_DAYS;
+  const num = isTimer
+    ? Math.max(1, (+$('fH').value || 0)*60 + (+$('fM').value || 0))
+    : Math.min(24, Math.max(1, +$('fT').value || 1));
+  return { isTimer, name, num, days: sheetDays.size ? [...sheetDays].sort((a,b)=>a-b) : ALL_DAYS };
+}
+
+/* the default: changes the goal itself, and drops any override on this day
+   so the new number actually shows */
+$('save').onclick = () => {
+  const { isTimer, name, num, days } = readForm();
+  const patch = isTimer ? { name, days, goalMin: num } : { name, days, target: num };
   const list = isTimer ? S.timers : S.reps;
-  if (sheet.id) Object.assign(list.find(x => x.id === sheet.id), patch);
-  else list.push({ id: uid(), ...patch });
+  if (sheet.id){
+    Object.assign(list.find(x => x.id === sheet.id), patch);
+    delete day()[isTimer ? 'goals' : 'targets'][sheet.id];
+  } else {
+    list.push({ id: uid(), ...patch });
+  }
+  closeSheet(); persist(true); render();
+};
+
+/* the number lands on this date only. Name and schedule belong to the goal,
+   so those still apply everywhere. */
+$('saveDay').onclick = () => {
+  const { isTimer, name, num, days } = readForm();
+  const item = (isTimer ? S.timers : S.reps).find(x => x.id === sheet.id);
+  if (!item){ closeSheet(); return; }
+  item.name = name; item.days = days;
+  const store = day()[isTimer ? 'goals' : 'targets'];
+  const base = isTimer ? item.goalMin : item.target;
+  if (num === base) delete store[item.id];   // same as the default, so no override needed
+  else store[item.id] = num;
   closeSheet(); persist(true); render();
 };
 
