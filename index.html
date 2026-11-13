@@ -129,6 +129,13 @@
   .sw .lbl{font-family:var(--mono);font-size:7.5px;letter-spacing:.03em;text-transform:uppercase;
            line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
            overflow:hidden;word-break:break-word}
+  .backup{display:flex;gap:6px}
+  .backup>*{flex:1;padding:13px 0;margin:0;border:1px solid var(--line);border-radius:11px;background:var(--card);
+            font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);text-align:center}
+  /* the real file input sits invisibly over its label, so a tap lands on it directly */
+  .file{position:relative;overflow:hidden}
+  .file input{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;opacity:0}
+  .backupNote{font-family:var(--mono);font-size:10px;color:var(--mute);letter-spacing:.03em;margin:8px 2px 0}
   body,.card,.tile,.bar,.sw{transition:background-color .2s ease,border-color .2s ease,color .2s ease}
 
   .veil{position:fixed;inset:0;background:rgba(34,27,51,.4);display:none;align-items:flex-end;z-index:9}
@@ -193,6 +200,13 @@
 
 <div class="band">Look</div>
 <div class="swatches" id="swatches"></div>
+
+<div class="band">Backup</div>
+<div class="backup">
+  <button id="export">Save a copy</button>
+  <label class="file">Restore<input type="file" id="importFile" aria-label="Restore from a backup file"></label>
+</div>
+<div class="backupNote" id="backupNote"></div>
 
 <div class="foot">
   Tap a day above to fill in what you missed.<br>
@@ -409,9 +423,11 @@ const goalOf   = (t, k = view) => day(k).goals[t.id] ?? t.goalMin;
 const isOverride = (item, k = view) =>
   day(k).targets[item.id] !== undefined || day(k).goals[item.id] !== undefined;
 
-/* is this goal meant to run on that date? */
+/* is this goal meant to run on that date? Goals made before start dates
+   existed have no `from`, so they keep showing on every past day. */
 const onDay = (item, k = view) =>
-  !Array.isArray(item.days) || item.days.includes(fromKey(k).getDay());
+  (!item.from || k >= item.from) &&
+  (!Array.isArray(item.days) || item.days.includes(fromKey(k).getDay()));
 const dowLabel = days => {
   if (!Array.isArray(days) || days.length === 7) return '';
   if (!days.length) return '';
@@ -575,6 +591,7 @@ function render(){
   document.getElementById('reps').innerHTML = many.map(repCard).join('');
   document.getElementById('tiles').innerHTML = once.map(chip).join('');
   document.getElementById('done').innerHTML = done.map(doneChip).join('');
+  renderBackup();
 
   const blank = document.getElementById('blank');
   if (timers.length || reps.length){
@@ -847,7 +864,7 @@ $('save').onclick = () => {
     Object.assign(list.find(x => x.id === sheet.id), patch);
     delete day()[isTimer ? 'goals' : 'targets'][sheet.id];
   } else {
-    list.push({ id: uid(), ...patch });
+    list.push({ id: uid(), from: dayKey(), ...patch });   // starts today, not back in history
   }
   closeSheet(); persist(true); render();
 };
@@ -876,16 +893,79 @@ $('kill').onclick = () => {
   closeSheet(); persist(true); render();
 };
 
+/* ---------- backup ---------- */
+
+/* Everything lives in this browser's storage, so a copy saved to Files
+   (iCloud Drive) is the only way back after a lost phone or cleared data. */
+function backupFile(){
+  const today = dayKey();
+  const json = JSON.stringify({ app:'day-tracker', saved: new Date().toISOString(), data: { ...S, backedUp: today } });
+  return new File([json], `day-tracker-${today}.json`, { type:'application/json' });
+}
+
+function renderBackup(){
+  const b = S.backedUp;
+  $('backupNote').textContent = !b ? 'Never backed up. Everything lives only on this phone.'
+    : b === dayKey() ? 'Last backup: today'
+    : `Last backup: ${fromKey(b).toLocaleDateString(undefined,{ month:'short', day:'numeric', year:'numeric' })}`;
+}
+
+$('export').onclick = async () => {
+  const file = backupFile();
+  // a phone gets the share sheet, where Save to Files reaches iCloud Drive.
+  // A plain download there can strand a Home Screen app on a preview with no way back.
+  if (matchMedia('(pointer:coarse)').matches && navigator.canShare && navigator.canShare({ files:[file] })){
+    try { await navigator.share({ files:[file] }); }
+    catch(e){ if (e.name !== 'AbortError') alert(`Couldn't open the share sheet: ${e.message}`); return; }
+  } else {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file); a.download = file.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  S.backedUp = dayKey(); persist(true); renderBackup();
+};
+
+/* a restore replaces everything, so it says what's in the file and asks first */
+$('importFile').onchange = async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  let o = null;
+  try { o = JSON.parse(await f.text()); } catch(err){}
+  e.target.value = '';   // so choosing the same file again still counts
+  const d = o && o.app === 'day-tracker' ? o.data : o;
+  if (!d || !Array.isArray(d.timers) || !Array.isArray(d.reps) || !d.days || typeof d.days !== 'object'){
+    alert(`${f.name} isn't a Day backup.`); return;
+  }
+  const goals = d.timers.length + d.reps.length;
+  const logged = Object.values(d.days).filter(x => x && (
+    Object.values(x.reps || {}).some(n => n > 0) ||
+    Object.values(x.sessions || {}).some(l => l && l.length))).length;
+  const when = o.saved
+    ? 'from ' + new Date(o.saved).toLocaleDateString(undefined,{ month:'short', day:'numeric', year:'numeric' })
+    : 'in this file';
+  if (!confirm(`Replace everything here with the backup ${when}?\n\n${goals} goals, ${logged} days with something logged.`)) return;
+  adopt(d);
+  view = dayKey(); stripEnd = dayKey();
+  persist(true); render(); renderSwatches();
+};
+
 /* ---------- boot ---------- */
 
-let lastDay = dayKey();
-(async function(){
-  S = (await store.get()) || seed();
+/* stored data and restored backups both pass through here, so an old copy
+   gets the same upgrades as old data on the phone */
+function adopt(data){
+  S = data;
   if (!S.theme) S.theme = 'lilac';
   if (!S.v) S.v = 0;
   migrate();
   applyTheme(S.theme);
   normalize();
+}
+
+let lastDay = dayKey();
+(async function(){
+  adopt((await store.get()) || seed());
   render();
   renderSwatches();
   persist(true);
