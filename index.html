@@ -777,6 +777,11 @@ let sheetDays = new Set(ALL_DAYS);
 function renderDow(){
   document.getElementById('dow').innerHTML = DOW.map((d,i) =>
     `<button data-dow="${i}" aria-pressed="${sheetDays.has(i)}" aria-label="${DOW_FULL[i]}">${d}</button>`).join('');
+  // no days picked saves as every day (see readForm), so the label says so too
+  const label = dowLabel([...sheetDays]);
+  $('save').textContent = !label ? 'Save for every day'
+    : label === 'Weekdays' || label === 'Weekends' ? `Save for ${label.toLowerCase()}`
+    : `Save for ${label.split(' ').join(', ')}`;
 }
 
 function openPicker(){
