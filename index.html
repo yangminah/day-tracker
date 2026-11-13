@@ -142,13 +142,17 @@
   .veil.open{display:flex}
   .sheet{background:var(--paper);width:100%;border-radius:18px 18px 0 0;
          padding:20px 18px calc(24px + env(safe-area-inset-bottom));
-         max-width:560px;margin:0 auto;-webkit-user-select:auto;user-select:auto}
+         max-width:560px;margin:0 auto;-webkit-user-select:auto;user-select:auto;
+         max-height:92vh;max-height:92dvh;overflow-y:auto}
   .sheet h2{font-family:var(--display);font-weight:700;font-size:20px;margin:0 0 16px;letter-spacing:-.01em}
   label{display:block;font-family:var(--mono);font-size:10px;color:var(--mute);letter-spacing:.12em;
         text-transform:uppercase;margin:0 0 6px}
   input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);
         font-family:var(--body);font-size:16px;color:var(--ink);margin-bottom:14px}
   input:focus{outline:2px solid var(--ink);outline-offset:-1px}
+  /* iOS draws date inputs centred and collapses them when empty */
+  input[type=date]{-webkit-appearance:none;appearance:none;min-height:46px;text-align:left}
+  input[type=date]::-webkit-date-and-time-value{text-align:left}
   .pair{display:flex;gap:10px}
   .pair>div{flex:1}
   .dow{display:flex;gap:5px;margin-bottom:9px}
@@ -249,6 +253,9 @@
         <button data-preset="wk">Weekdays</button>
         <button data-preset="we">Weekends</button>
       </div>
+      <label for="fFrom">Starts on</label>
+      <input id="fFrom" type="date">
+      <div class="hint">Leave empty to show it on every day back to the start.</div>
 
       <button class="save" id="save">Save for every day</button>
       <button class="saveDay" id="saveDay">Just for this day</button>
@@ -344,7 +351,7 @@ const DOW_FULL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 function seed(){
   return {
-    v: 4,
+    v: 5,
     theme: 'lilac',
     timers: [{ id: uid(), name: 'Standing desk', goalMin: 120, days: ALL_DAYS }],
     reps: [
@@ -389,7 +396,21 @@ function migrate(){
     // goals made before schedules existed keep running every day
     [...S.timers, ...S.reps].forEach(x => { if (!Array.isArray(x.days) || !x.days.length) x.days = ALL_DAYS; });
   }
-  S.v = 4;
+  if (S.v < 5){
+    // goals made before start dates existed begin on the first day anything was
+    // logged for them, so they stop showing on days before they were added.
+    // One never logged keeps showing everywhere; the editor fixes either.
+    const keys = Object.keys(S.days).sort();
+    [...S.timers, ...S.reps].forEach(x => {
+      if (x.from) return;
+      const k = keys.find(k => {
+        const d = S.days[k] || {};
+        return (d.reps && d.reps[x.id] > 0) || (d.sessions && d.sessions[x.id] && d.sessions[x.id].length);
+      });
+      if (k) x.from = k;
+    });
+  }
+  S.v = 5;
 }
 
 function day(k = view){
@@ -825,6 +846,7 @@ function openSheet(kind, id){
   sheetDays = new Set(item && Array.isArray(item.days) && item.days.length ? item.days : ALL_DAYS);
   renderDow();
   $('fName').value = item ? item.name : '';
+  $('fFrom').value = item ? (item.from || '') : dayKey();
   if (isTimer){
     const g = item ? goalOf(item) : 120;
     $('fH').value = Math.floor(g/60); $('fM').value = g%60;
@@ -851,31 +873,32 @@ function readForm(){
   const num = isTimer
     ? Math.max(1, (+$('fH').value || 0)*60 + (+$('fM').value || 0))
     : Math.min(24, Math.max(1, +$('fT').value || 1));
-  return { isTimer, name, num, days: sheetDays.size ? [...sheetDays].sort((a,b)=>a-b) : ALL_DAYS };
+  return { isTimer, name, num, days: sheetDays.size ? [...sheetDays].sort((a,b)=>a-b) : ALL_DAYS,
+           from: $('fFrom').value || null };
 }
 
 /* the default: changes the goal itself, and drops any override on this day
    so the new number actually shows */
 $('save').onclick = () => {
-  const { isTimer, name, num, days } = readForm();
-  const patch = isTimer ? { name, days, goalMin: num } : { name, days, target: num };
+  const { isTimer, name, num, days, from } = readForm();
+  const patch = isTimer ? { name, days, from, goalMin: num } : { name, days, from, target: num };
   const list = isTimer ? S.timers : S.reps;
   if (sheet.id){
     Object.assign(list.find(x => x.id === sheet.id), patch);
     delete day()[isTimer ? 'goals' : 'targets'][sheet.id];
   } else {
-    list.push({ id: uid(), from: dayKey(), ...patch });   // starts today, not back in history
+    list.push({ id: uid(), ...patch });
   }
   closeSheet(); persist(true); render();
 };
 
-/* the number lands on this date only. Name and schedule belong to the goal,
-   so those still apply everywhere. */
+/* the number lands on this date only. Name, schedule and start date belong
+   to the goal, so those still apply everywhere. */
 $('saveDay').onclick = () => {
-  const { isTimer, name, num, days } = readForm();
+  const { isTimer, name, num, days, from } = readForm();
   const item = (isTimer ? S.timers : S.reps).find(x => x.id === sheet.id);
   if (!item){ closeSheet(); return; }
-  item.name = name; item.days = days;
+  item.name = name; item.days = days; item.from = from;
   const store = day()[isTimer ? 'goals' : 'targets'];
   const base = isTimer ? item.goalMin : item.target;
   if (num === base) delete store[item.id];   // same as the default, so no override needed
